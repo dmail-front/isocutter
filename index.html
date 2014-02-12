@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+	<meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+	<title>Decoupe tiles</title>
+	<script type="text/javascript" src="./jszip.js"></script>
+	<style>
+	body{
+		position: relative;
+	}
+
+	span.label{
+		display: inline-block;
+		width: 200px;
+	}
+
+	div>img:first-child{
+		opacity: 0.5;
+	}
+
+	div>canvas{
+		position: absolute;
+	}
+	</style>
+</head>
+
+<body>
+	<ul>
+		<li>Je ne peux pas garantir que ca marche sur un autre navigateur que firefox > 10</li>
+		<li>Ne mettre que des nombres dans position du tile et ça fait bouger le tile rouge</li>
+	</ul>
+	<br /><br />
+
+	<label>
+		<span class="label">Image à découper:</span>
+		<input id="file" type="file" accept="image/*" />
+	</label>
+	<br />
+	<br />
+	
+	<label>
+		<span class="label">Position x du premier tile:</span>
+		<input id="xgap" type="text" value="0" size="2" />
+	</label>
+	<br />
+	<label>
+		<span class="label">Position y du premier tile</span>
+		<input id="ygap" type="text" value="0" size="2" />
+	</label>
+	
+	<br />
+	<br />
+		<span class="label">Apercu de l'image:</span>
+		<div id="preview_div" style="position:relative;display:inline-block">
+			<img id="preview" src="" alt="Aucune image séléctionnée" />
+			<img id="tile" style="position:absolute;z-index:2;left:0px;top:0px" src="./tile.png" />
+		</div>
+	<br />
+	<br />
+	<button id="submit">Découper</button>
+
+<script type="text/javascript">
+
+var Losange = {
+	width: 64,
+	height: 31,
+
+	create: function(left, top, type){
+		this.left = left;
+		this.top = top;
+		this.source = Decoupe.canvas;
+		this.canvas = document.createElement('canvas');
+		this.canvas.setAttribute('data-type', type);
+		this.canvas.width = this.width;
+		this.canvas.height = this.height;
+		this.canvas.style.left = this.left + 'px';
+		this.canvas.style.top = this.top + 'px';
+		this.ctx = this.canvas.getContext('2d');
+	},
+
+	cut: function(){
+		var dx = 0;
+		var dy = 0;
+		var width = this.width;
+		var height = this.height;
+		var left, top, right, bottom;
+
+		// reste dans les limites de l'image source
+		left = this.left;
+		if( left < 0 ){
+			dx = -left;
+			width-= dx;
+			left = 0;
+		}
+
+		top = this.top;
+		if( top < 0 ){
+			dy = -top;
+			height-= dy;
+			top = 0;
+		}
+
+		right = left + width;		
+		if( right > this.source.width ){
+			width = this.source.width - left;
+		}
+
+		bottom = top + height;
+		if( bottom > this.source.height ){
+			height = this.source.height - top;
+		}
+
+		if( right < left ){
+			right = left;
+			width = 0;
+		}
+		if( bottom < top ){
+			bottom = top;
+			height = 0;
+		}
+
+		try{
+			this.ctx.drawImage(this.source, left, top, width, height, dx, dy, width, height);	
+		}
+		catch(e){
+			console.log(left, right, width);
+		}
+
+	},
+
+	clearTopLeft: function(type){
+		var ctx = this.ctx;		
+		var count = Math.floor(this.height / 2);
+		var width = Math.floor(this.width / 2) - 2;
+		var line = 0;
+		var row = 0;
+
+		for(;line<count;line++){
+			ctx.clearRect(row, line, width, 1);
+			width-= 2;
+		}
+	},
+
+	clearTopRight: function(type){
+		var ctx = this.ctx;
+		var count = Math.floor(this.height / 2);
+		var width = Math.floor(this.width / 2) + 2;
+		var line = 0;
+		var row = width;
+
+		for(;line<count;line++){
+			ctx.clearRect(row, line, width, 1);
+			width-= 2;
+			row+= 2;
+		}
+	},
+
+	clearBottomLeft: function(type){
+		var ctx = this.ctx;
+		var count = this.height;
+		var width = 2;
+		var line = Math.floor(this.height / 2) + 1;
+		var row = 0;
+
+		for(;line<count;line++){
+			ctx.clearRect(row, line, width, 1);
+			width+= 2;
+		}
+	},	
+
+	clearBottomRight: function(type){
+		var ctx = this.ctx;
+		var count = this.height;
+		var width = 2;
+		var line = Math.floor(this.height / 2) + 1;
+		var row = this.width - 2;
+
+		for(;line<count;line++){
+			ctx.clearRect(row, line, width, 1);
+			width+= 2;
+			row-= 2;
+		}
+	},
+
+	clearCorners: function(type){
+		this.clearTopLeft(type);
+		this.clearBottomLeft(type);
+		this.clearTopRight(type);
+		this.clearBottomRight(type);
+	},
+
+	isEmpty: function(dataUrl){
+		if( !dataUrl ){
+			dataUrl = this.canvas.toDataURL();
+		}
+
+		var blank = document.createElement('canvas');
+    	blank.width = this.canvas.width;
+    	blank.height = this.canvas.width;
+
+    	return blank.toDataURL() == dataUrl;
+	}
+};
+
+var Decoupe = {
+	losanges: [],
+	img: null,
+	xgap: 10,
+	ygap: 0,
+
+	cutLosange: function(x, y, type){
+		var losange = Losange.new(x, y, type);
+
+		losange.canvas.setAttribute('data-name', this.losanges.length + '.png');
+		losange.cut();
+		losange.clearCorners();
+		this.losanges.push(losange);
+
+		$('preview_div').appendChild(losange.canvas);
+
+		return losange;
+	},
+
+	getFirstLosangeXCoordinate: function(){
+		var gap = Math.floor(this.xgap % Losange.width);
+
+		if( gap ){
+			return -Losange.width + gap;
+		}
+		return 0;
+	},
+
+	getFirstLosangeYCoordinate: function(){
+		var gap = Math.floor(this.ygap % Losange.height);
+
+		if( gap ){
+			return -Losange.height + gap;
+		}
+		return 0;		
+	},
+
+	generateLineA: function(lineIndex){
+		var x = this.getFirstLosangeXCoordinate(), y = this.getFirstLosangeYCoordinate();
+
+		y+= 32 * lineIndex;
+
+		for(;x<this.canvas.width;x+=Losange.width){
+			this.cutLosange(x, y, 'a');
+		}
+	},
+
+	generateLineB: function(lineIndex){
+		var x = this.getFirstLosangeXCoordinate(), y = this.getFirstLosangeYCoordinate();
+
+		y+= 32 * lineIndex;
+		x-= Math.floor(Losange.width / 2);
+		y-= Math.floor(Losange.height / 2) + 1;
+
+		for(;x<this.canvas.width;x+=Losange.width){
+			this.cutLosange(x, y, 'b');
+		}
+	},
+
+	generateLine: function(lineIndex){
+		this.generateLineA(lineIndex);
+		this.generateLineB(lineIndex);		
+	},
+
+	generate: function(){
+		var line = 0, count = Math.ceil(this.canvas.height / Losange.height);
+
+		for(;line<count;line++){
+			Decoupe.generateLine(line);
+		}
+
+		if( count%2 !== 0 ){
+			this.generateLineB(count);
+		}
+	},
+
+	// met tout en 64x64 pour nico
+	resizeAll: function(){
+		var i = 0, j = this.losanges.length, losange;
+
+		for(;i<j;i++){
+			losange = this.losanges[i];
+
+			var canvas = document.createElement('canvas');
+			canvas.width = 64;
+			canvas.height = 64;
+			canvas.getContext('2d').drawImage(losange.canvas, 0, 33);
+
+			losange.canvas = canvas;
+		}
+	},
+
+	download: function(){
+		this.resizeAll();
+
+		var zip = new JSZip();
+		var i = 0, j = Decoupe.losanges.length, losange, dataUrl;
+		var folderName = file.name.slice(0, file.name.lastIndexOf('.'));
+		var images = zip.folder(folderName);
+		var fileName;
+		var count = 0;
+
+		for(;i<j;i++){
+			losange = Decoupe.losanges[i];
+			dataUrl = losange.canvas.toDataURL();
+
+			// isEmpty marche pas
+			if( !losange.isEmpty(dataUrl) ){
+				dataUrl = dataUrl.replace("data:image/png;base64,","");
+				fileName = folderName + (count < 10 ? '0' + count : count) + ".png";
+				images.file(fileName, dataUrl, {base64: true});
+				count++;
+			}
+		}
+
+		var content = zip.generate();
+		location.href = "data:application/zip;base64," + content;
+	}
+};
+
+Object.prototype.new = function(){
+	var instance = Object.create(this);
+
+	if( instance.create ) instance.create.apply(instance, arguments);
+
+	return instance;
+};
+
+window.$ = function(id){
+	return document.getElementById(id);
+};
+
+window.file = null;
+
+$('xgap').onkeydown = function(e){
+	if( e.keyCode == 38 ){
+		this.value++;
+		this.oninput();
+	}
+	else if( e.keyCode == 40 ){
+		this.value--;
+		this.oninput();
+	}
+};
+
+$('ygap').onkeydown = function(e){
+	if( e.keyCode == 38 ){
+		this.value++;
+		this.oninput();
+	}
+	else if( e.keyCode == 40 ){
+		this.value--;
+		this.oninput();
+	}
+};
+
+$('xgap').oninput = function(e){
+	$('tile').style.left = this.value + 'px';
+};
+
+$('ygap').oninput = function(e){
+	$('tile').style.top = this.value + 'px';
+};
+
+$('file').onchange = function(e){
+	var files = e.target.files;
+
+	if( !files || !files[0] ) return;
+
+	window.file = files[0];
+
+	var reader = new FileReader();
+
+	window.loading = true;
+
+  	reader.onloadend = function(e){
+  		window.loading = false;
+  		$('preview').src = e.target.result;
+  	};
+  	
+    reader.readAsDataURL(file);
+};
+
+$('submit').onclick = function(e){
+	if( file == null ){
+		alert('selectionne dab une image');
+		return;
+	}
+
+	if( loading ){
+		alert('image en train de charger, attends un peu');
+		return;
+	}
+
+	var preview = $('preview');
+	var canvas = document.createElement('canvas');
+	var ctx = canvas.getContext('2d');
+
+	canvas.width = preview.width;
+	canvas.height = preview.height;
+	ctx.drawImage(preview, 0, 0);
+
+	Decoupe.xgap = $('xgap').value;
+	Decoupe.ygap = $('ygap').value;
+	Decoupe.canvas = canvas;
+	Decoupe.generate();
+	Decoupe.download();
+};
+
+</script>
+</body>
+
+</html>
