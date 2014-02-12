@@ -270,12 +270,8 @@ var Decoupe = {
 	generate: function(){
 		var line = 0, count = Math.ceil(this.canvas.height / Losange.height);
 
-		for(;line<count;line++){
+		for(;line<=count;line++){
 			Decoupe.generateLine(line);
-		}
-
-		if( count%2 !== 0 ){
-			this.generateLineB(count);
 		}
 	},
 
